@@ -51,6 +51,7 @@ The bootstrap process refers to how switches register with the controller, as we
 **Note:** The bootstrap process must also enable the controller process, and each of the switch processes, to learn each other’s host/port information (hostname and UDP port number information), so communication using socket programming is feasible.
 
 1. The controller and switch processes are provided with information using command line arguments (we require the command line arguments follow a required format discussed under ‘Running your Code and Important Requirements’)
+
     a. The controller process binds to a well-known port number
     b. Each switch process is provided with its own id, as well as the hostname and port number, that the controller process runs on, as command line arguments.
 
