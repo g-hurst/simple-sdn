@@ -59,9 +59,9 @@ The bootstrap process refers to how switches register with the controller, as we
 
 
 3. Once all switches have registered, the controller responds with a Register Response message to each switch which includes the following information
-    a. The id of each neighboring switch
-    b. a flag indicating whether the neighbor is alive or not (initially, all switches are alive)
-    c. for each live switch, the host/port information of that switch process.
+    1. The id of each neighboring switch
+    2. a flag indicating whether the neighbor is alive or not (initially, all switches are alive)
+    3. for each live switch, the host/port information of that switch process.
 
 ### Path computations
 Once all switches have registered, the controller computes paths between each source-destination pair using the shortest path algorithm.
@@ -149,7 +149,7 @@ Format for each type of log messages is shown in comments beside their correspon
 #### Controller Log File name
 This must be Controller.log
 
-Note: To reduce log output, please do not print messages when Keep Alive messages are sent or received. We also do not have log function for this.
+**Note:** To reduce log output, please do not print messages when Keep Alive messages are sent or received. We also do not have log function for this.
 Sample logs are available with the starter code. The sample log file is the situation where Config/graph_3.txt is used. Therefore, you will find one controller log file Controller.log and three switch log files switch0.log, switch1.log, and switch2.log. After all the switches know the initial topology, switch 1 is killed, and a new topology is calculated by the controller and sent out to the switches.
 
 ### Running your code and Important Requirements
