@@ -12,7 +12,7 @@ In this project, you will implement a highly simplified SDN system comprising a 
 A key part of the problem is ensuring the controller has an up-to-date view of the topology despite node and link failures. To detect switch and link failures, periodic messages are exchanged between the switches, as well as between each switch and the controller as will be described in the document. The controller runs algorithms for path computation each time that the topology changes, and ships the latest routing table to each switch.
 
 
-The routing algorithm used by the controller to compute paths is Dijkstra’s shortest path algorithm. Specifically, of all possible paths between the source and destination, the path with the shortest “distance” is chosen. The distance of a path is the sum of all the links’ distances on the path.
+The routing algorithm used by the controller to compute paths is **Dijkstra’s shortest path algorithm**. Specifically, of all possible paths between the source and destination, the path with the shortest “distance” is chosen. The distance of a path is the sum of all the links’ distances on the path.
 
 ## Project Description
 The switches and the controller emulate a topology specified in a topology configuration file. We begin by describing the format of the configuration file, next discuss the bootstrap process (the action performed by each switch process at the start of execution), path computation (how the controller computes routing tables), and the periodic actions that must be continually performed by the switch and the controller.
@@ -48,7 +48,7 @@ Here is an example configuration for the topology shown.
 ### Bootstrap process
 The bootstrap process refers to how switches register with the controller, as well as learn about each other.
 
-**Note:** The bootstrap process must also enable the controller process, and each of the switch processes, to learn each other’s host/port information (hostname and UDP port number information), so communication using socket programming is feasible.
+**Note:** *The bootstrap process must also enable the controller process, and each of the switch processes, to learn each other’s host/port information (hostname and UDP port number information), so communication using socket programming is feasible.*
 
 1. The controller and switch processes are provided with information using command line arguments (we require the command line arguments follow a required format discussed under ‘Running your Code and Important Requirements’)
     1. The controller process binds to a well-known port number
@@ -58,17 +58,16 @@ The bootstrap process refers to how switches register with the controller, as we
 2. When a switch (for instance, with ID = 4) joins the system, it contacts the controller with a Register Request, along with its id. The controller learns the host/port information of the switch from this message.
 
 
-3. Once all switches have registered, the controller responds with a Register Response message to each switch which includes the following information
+3. Once **all switches** have registered, the controller responds with a Register Response message to each switch which includes the following information
     1. The id of each neighboring switch
     2. a flag indicating whether the neighbor is alive or not (initially, all switches are alive)
     3. for each live switch, the host/port information of that switch process.
 
 ### Path computations
-Once all switches have registered, the controller computes paths between each source-destination pair using the shortest path algorithm.
+1. Once all switches have registered, the controller computes paths between each source-destination pair using the shortest path algorithm.
+2. Once path computation is completed, the controller sends each switch its “routing table” using a Route Update message. This table sent to switch A includes an entry for every switch (including switch A itself), and the next hop to reach every destination. The self-entry is indicated by an zero (=0) distance. If a switch can’t be reached from the current switch, then the next hop is set to -1 and the distance is set to 9999.
 
-Once path computation is completed, the controller sends each switch its “routing table” using a Route Update message. This table sent to switch A includes an entry for every switch (including switch A itself), and the next hop to reach every destination. The self-entry is indicated by an zero (=0) distance. If a switch can’t be reached from the current switch, then the next hop is set to -1 and the distance is set to 9999.
-
-Shortest path example
+#### Shortest path example
 In the topology example from figure 1, let us consider finding the best path between source switch 1 and destination switch 2. We can observe that the shortest path is 50, which is the link that directly connects switch 1 and 2. Dijkstra algorithm is a good fit for calculating shorting paths.
 
 ### Periodic Operations
@@ -91,7 +90,7 @@ Each switch and the controller must perform a set of operations at regular inter
 ### Mechanism to handle concurrency
 As described above, a switch process has to concurrently perform two functions - either act on the messages received from neighbors/controller or wait for every ‘K’ seconds to send Keep Alive and Topology Update messages and check for dead neighbor switches. Similarly the controller has to receive Topology Update from the switches, but also periodically check whether any switch has failed.
 
-To implement the concurrency, we require you to use Threads (See Threading Library in Python).
+To implement the concurrency, we require you to use **Threads** (See Threading Library in Python).
 
 ## Simulating Failure
 Since we are running switches as processes, it is unlikely to fail due to natural network issues. Therefore, to allow testing and grading your submission we require the following to be implemented.
@@ -103,23 +102,22 @@ To simulate switch failure, you just need to kill the process corresponding to t
 Simulating link failures is a bit more involved. We ask that you implement your switch with a command line parameter that indicates a link has failed.
 
 For instance, let us say the command to start a switch in its normal mode is as follows:
-switch <switch-ID> <controller hostname> <controller port>
 
+`switch <switch-ID> <controller hostname> <controller port>`
 
 Then, make sure your code can support the following parameter below:
-switch <switchID> <controller hostname> <controller port> -f <neighbor ID>
 
+`switch <switchID> <controller hostname> <controller port> -f <neighbor ID>`
 
 This says that the switch must run as usual, but the link to neighborID failed. In this failure mode, the switch should not send KEEP_ALIVE messages to a neighboring switch with ID neighborID, and should not process any KEEP_ALIVE messages from the neighboring switch with ID neighborID.
 
 ## Logging
 We REQUIRE that your switch and controller processes must log messages in a format exactly matching what the auto-grader requires. The logfile names must also match what the auto-grader expects. No additional messages should be printed.
 
-To help you with generating the right format for the logs, in the starter code, we have created a starter version of controller.py and switch.py for you. Those two files contain various log functions that you must use. Each log function corresponds to a type of log message that will be explained below. We strongly recommend that you use those functions because the auto-grader is quite picky about exact log formats. If you choose not to use those functions, we won’t be able to award credit for test cases that fail owing to minor logging discrepancies.
+To help you with generating the right format for the logs, in the starter code, we have created a starter version of controller.py and switch.py for you. Those two files contain various log functions that you must use. Each log function corresponds to a type of log message that will be explained below. **We strongly recommend that you use those functions because the auto-grader is quite picky about exact log formats. If you choose not to use those functions, we won’t be able to award credit for test cases that fail owing to minor logging discrepancies.**
 
 ### Switch Process
 Switch Process must log
-
 1. when a Register Request is sent,
 2. when the Register Response is received,
 3. when any neighboring switches are considered unreachable,
@@ -137,7 +135,6 @@ Format for each type of log messages is shown in comments beside their correspon
 
 ### Controller Process
 The Controller process must log
-
 1. When a Register Request is received,
 2. When all the Register Responses are sent (send one register response to each switch),
 3. When it detects a change in topology (a switch or a link is down or up),
@@ -154,8 +151,10 @@ Sample logs are available with the starter code. The sample log file is the situ
 
 ### Running your code and Important Requirements
 We must be able to run the Controller and Switch python files by running:
-python controller.py [controller port] [config file]
-python switch.py <switchID> <controller hostname> <controller port> -f <neighbor ID>
+
+`python controller.py [controller port] [config file]`
+
+`python switch.py <switchID> <controller hostname> <controller port> -f <neighbor ID>`
 
 The Controller should be executed first in a separate terminal. While it is running each switch should be launched in a separate terminal with the Switch ID, Controller hostname and the port.
 
@@ -170,7 +169,6 @@ As mentioned earlier, you are strongly recommended to use the logging functions 
 ### What you need to submit
 Submit only controller.py and switch.py to Gradescope.
 
-
 ## Grading
 Grading will be based on the test configurations provided with the starter code and some hidden tests. Make sure your code is able to handle all failure and restart scenarios for full points.
 
@@ -181,7 +179,10 @@ While you are not required to follow this format, you may find it useful to foll
 `<Switch-ID> Register_Request`
 
 Eg. Switch (ID = 3) sends the following Register Request to the controller when it first comes online.
+
+```
 3 Register_Request
+```
 
 #### Format for Register Response
 `<number-of-neighbors>`
@@ -201,8 +202,8 @@ Switch (ID = 3) receives the following Register Response from the controller:
 
 #### Format for Route Update
 `<Switch-ID>`
-`<Dest Id> <Next Hop to reach Dest> (for all switches in the network)`
 
+`<Dest Id> <Next Hop to reach Dest> (for all switches in the network)`
 
 Next hop is returned as ‘-1’ if the destination can’t be reached by the switch via any possible path.
 
@@ -224,7 +225,10 @@ Switch (ID = 3) receives the following Route Update from the controller (Initial
 `<Switch-ID> KEEP_ALIVE`
 
 Eg. Switch (ID = 3) sends the following Keep Alive to all of its neighboring switches:
+
+```
 3 KEEP_ALIVE
+```
 
 #### Format for Topology Update Message
 `<Switch-ID>`
