@@ -128,7 +128,9 @@ Switch Process must log
 This must be `switch<Switch-ID>.log`
 
 E.g., For Switch (ID = 4)
+```
 switch4.log
+```
 
 #### Format for Switch Logs
 Format for each type of log messages is shown in comments beside their corresponding log functions. Please refer to the starter code.
@@ -186,8 +188,8 @@ Eg. Switch (ID = 3) sends the following Register Request to the controller when 
 
 #### Format for Register Response
 `<number-of-neighbors>`
-`<neighbor id> <neigh_hostname> <neigh_port>` (for each neighbor)
 
+`<neighbor id> <neigh_hostname> <neigh_port>` (for each neighbor)
 
 Eg. Consider the 6-switch topology given in Figure 1..
 
@@ -232,6 +234,7 @@ Eg. Switch (ID = 3) sends the following Keep Alive to all of its neighboring swi
 
 #### Format for Topology Update Message
 `<Switch-ID>`
+
 `<Neighbor Id> <True/False indicating whether the neighbor is alive>` (for all neighbors)
 
 Eg. Consider the 6-switch topology given in Figure 1.
