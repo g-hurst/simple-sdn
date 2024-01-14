@@ -1,5 +1,7 @@
 # Project I: Building a simple software defined network (SDN)
 
+**IMPORTANT:** This is just a md form of the file `Lab_project_1.docx`.
+
 ## Project Overview
 In contrast to traditional computer networks which employ distributed routing algorithms, there is growing interest in a new way of designing networks, which is referred to as Software Defined Networks (SDN). An SDN network consists of multiple SDN switches and a centralized SDN controller. Unlike traditional networks, SDN switches do not run distributed protocols for route computation. Instead, the SDN controller keeps track of the entire network topology, and all routing decisions (path computations) are made in a centralized fashion. Routing tables computed by the controller are then shipped to the switches.
 
@@ -25,31 +27,22 @@ This indicates that there is a link connecting switch 1 and switch 2, which has 
 
 Consider the switch topology given in Figure 1. Please note that the switch id starts from 0 instead of 1.
 
-
-
+![image](./figure1.png)
 Figure 1: 6 switch topology. Each link is marked with its distance.
-
 
 Here is an example configuration for the topology shown.
 
-
+```
 6
-
 0 1 100
-
 0 3 200
-
 0 5 80
-
 1 2 50
-
 1 4 180
-
 2 3 50
-
 2 5 150
-
 3 4 100
+```
 
 ### Bootstrap process
 The bootstrap process refers to how switches register with the controller, as well as learn about each other.
