@@ -27,8 +27,9 @@ This indicates that there is a link connecting switch 1 and switch 2, which has 
 
 Consider the switch topology given in Figure 1. Please note that the switch id starts from 0 instead of 1.
 
-![image](./figure1.png)
-Figure 1: 6 switch topology. Each link is marked with its distance.
+![Figure 1](./figure1.png)
+
+*Figure 1:* 6 switch topology. Each link is marked with its distance.
 
 Here is an example configuration for the topology shown.
 
