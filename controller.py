@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """This is the Controller Starter Code for ECE50863 Lab Project 1
 Author: Xin Du
@@ -8,6 +8,24 @@ Last Modified Date: December 9th, 2021
 
 import sys
 from datetime import date, datetime
+
+class Controller():
+    def __init__(self, cfg):
+        self.topology = cfg.get('num_switches')
+        self.map      = {}
+        for edge in cfg.get('edges'): 
+            self.update_map(edge)
+    
+    def update_map(self, edge):
+        if self.map.get(edge[0]) == None:
+            self.map[edge[0]] = {edge[1]: edge[2]}
+        else: 
+            self.map[edge[0]][edge[1]] = edge[2]
+        if self.map.get(edge[1]) == None:
+            self.map[edge[1]] = {edge[0]: edge[2]}
+        else: 
+            self.map[edge[1]][edge[0]] = edge[2]
+        
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "Controller.log"
@@ -107,6 +125,14 @@ def write_to_log(log):
         # Write to log
         log_file.writelines(log)
 
+def read_config(f_name):
+    lines = [line.strip() for line in open(f_name, 'r')]
+    cfg = {
+        'num_switches':int(lines.pop(0)),
+        'edges':[list(map(int, l.split())) for l in lines]
+    }
+    return cfg
+
 def main():
     #Check for number of arguments and exit if host/port not provided
     num_args = len(sys.argv)
@@ -115,6 +141,10 @@ def main():
         sys.exit(1)
     
     # Write your code below or elsewhere in this file
+    cfg = read_config(sys.argv[2])
+    print(cfg)
+    controller = Controller(cfg)
+    print(controller.map)
 
 if __name__ == "__main__":
     main()

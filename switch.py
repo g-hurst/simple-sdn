@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """This is the Switch Starter Code for ECE50863 Lab Project 1
 Author: Xin Du
@@ -87,6 +87,8 @@ def write_to_log(log):
         # Write to log
         log_file.writelines(log)
 
+
+
 def main():
 
     global LOG_FILE
@@ -101,6 +103,7 @@ def main():
     LOG_FILE = 'switch' + str(my_id) + ".log" 
 
     # Write your code below or elsewhere in this file
+    
 
 if __name__ == "__main__":
     main()
