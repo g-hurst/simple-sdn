@@ -8,14 +8,17 @@ Last Modified Date: December 9th, 2021
 
 import sys
 from datetime import date, datetime
+import argparse
 
 class Controller():
     def __init__(self, cfg):
+        self.dj_max   = sys.maxsize
         self.topology = cfg.get('num_switches')
         self.map      = {}
         for edge in cfg.get('edges'): 
             self.update_map(edge)
-    
+        self.paths     = self._init_shortests()
+
     def update_map(self, edge):
         if self.map.get(edge[0]) == None:
             self.map[edge[0]] = {edge[1]: edge[2]}
@@ -25,7 +28,15 @@ class Controller():
             self.map[edge[1]] = {edge[0]: edge[2]}
         else: 
             self.map[edge[1]][edge[0]] = edge[2]
-        
+    
+    def _init_shortests(self): 
+        nodes_unvisited = self.map.keys()
+        paths = {}
+        nodes_prev = {}
+        for n in nodes_unvisited:
+            paths[n] = self.dj_max
+        return []
+
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "Controller.log"
@@ -134,17 +145,21 @@ def read_config(f_name):
     return cfg
 
 def main():
-    #Check for number of arguments and exit if host/port not provided
-    num_args = len(sys.argv)
-    if num_args < 3:
-        print ("Usage: python controller.py <port> <config file>\n")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+                        prog='Controller.py',
+                        description='Simple Software Defnined Netowrk (SDN) Controller')
+    parser.add_argument('port', type=int, help='port for the controller to listen on (must be integer)')
+    parser.add_argument('config_path', type=str, help='path of the config file')
+    args = parser.parse_args()
     
     # Write your code below or elsewhere in this file
-    cfg = read_config(sys.argv[2])
+    cfg = read_config(args.config_path)
     print(cfg)
     controller = Controller(cfg)
     print(controller.map)
+    print(controller.paths)
+
+    print('waiting for sockets to connect...')
 
 if __name__ == "__main__":
     main()
