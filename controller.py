@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 
-"""This is the Controller Starter Code for ECE50863 Lab Project 1
-Author: Xin Du
-Email: du201@purdue.edu
-Last Modified Date: December 9th, 2021
-"""
-
 import sys
 from datetime import date, datetime
 import argparse
+
+import sys
+import socket
+import selectors
+import types
+
+import threading
+
+class Listener():
+    def __init__(self, port):
+        print(f'listner started on port: {port}')
 
 class Controller():
     def __init__(self, cfg):
@@ -20,14 +25,10 @@ class Controller():
         self.paths     = self._init_shortests()
 
     def update_map(self, edge):
-        if self.map.get(edge[0]) == None:
-            self.map[edge[0]] = {edge[1]: edge[2]}
-        else: 
-            self.map[edge[0]][edge[1]] = edge[2]
-        if self.map.get(edge[1]) == None:
-            self.map[edge[1]] = {edge[0]: edge[2]}
-        else: 
-            self.map[edge[1]][edge[0]] = edge[2]
+        if self.map.get(edge[0]) == None: self.map[edge[0]]          = {edge[1]: edge[2]}
+        else:                             self.map[edge[0]][edge[1]] = edge[2]
+        if self.map.get(edge[1]) == None: self.map[edge[1]]          = {edge[0]: edge[2]}
+        else:                             self.map[edge[1]][edge[0]] = edge[2]
     
     def _init_shortests(self): 
         nodes_unvisited = self.map.keys()
@@ -144,6 +145,9 @@ def read_config(f_name):
     }
     return cfg
 
+def run_listner(port, queue):
+    listner = Listener(port)
+
 def main():
     parser = argparse.ArgumentParser(
                         prog='Controller.py',
@@ -160,6 +164,9 @@ def main():
     print(controller.paths)
 
     print('waiting for sockets to connect...')
+
+    listner_thread = threading.Thread(target=run_listner, args=(args.port, {}))
+    listner_thread.start()
 
 if __name__ == "__main__":
     main()
