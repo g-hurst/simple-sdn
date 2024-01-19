@@ -3,17 +3,51 @@
 import sys
 from datetime import date, datetime
 import argparse
-
-import sys
 import socket
 import selectors
 import types
-
 import threading
+
+# Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
+LOG_FILE = "Controller.log"
+
+event_queue = []
+def event_queue_pop(n=0):
+    lock = threading.Lock()
+    lock.acquire()
+    val = event_queue.pop(n)
+    lock.release()
+    return val
+def event_queue_append(event):
+    lock = threading.Lock()
+    lock.acquire()
+    event_queue.append(event)
+    lock.release()
 
 class Listener():
     def __init__(self, port):
-        print(f'listner started on port: {port}')
+        self.port = port
+        self.lock = threading.Lock()
+    def start(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((socket.gethostname(), self.port))
+        print(f'listner (UDP) started on port: {socket.gethostname()}:{self.port}')
+        while True:
+            data, addr = sock.recvfrom(1024)
+            # print(f'{addr}: {data}')
+            event_queue_append((addr, data))
+
+class Switch():
+    def __init__(self, id, host, port):
+        self.id   = id
+        self.host = host
+        self.port = port
+    def __str__(self):
+        msg = 'Switch:\n  '
+        msg += '\n  '.join([f'{k} == {v}' for (k,v) in self.__dict__.items()])
+        return msg
+    def __repr__(self):
+        return f'<Switch({self.id})>'
 
 class Controller():
     def __init__(self, cfg):
@@ -22,49 +56,53 @@ class Controller():
         self.map      = {}
         for edge in cfg.get('edges'): 
             self.update_map(edge)
-        self.paths     = self._init_shortests()
+        self.paths     = {}
+        self.lock      = threading.Lock()
+        self.registery = dict()
+        self.log_file_name = LOG_FILE
+        self.log       = []
+    def __str__(self, blocking=True):
+        if blocking: self.lock.acquire()
+        msg = 'Controller:\n  '
+        msg += '\n  '.join([f'{k} == {v}' for (k,v) in self.__dict__.items()])
+        if blocking: self.lock.release()
+        return msg
 
     def update_map(self, edge):
         if self.map.get(edge[0]) == None: self.map[edge[0]]          = {edge[1]: edge[2]}
         else:                             self.map[edge[0]][edge[1]] = edge[2]
         if self.map.get(edge[1]) == None: self.map[edge[1]]          = {edge[0]: edge[2]}
         else:                             self.map[edge[1]][edge[0]] = edge[2]
-    
-    def _init_shortests(self): 
-        nodes_unvisited = self.map.keys()
-        paths = {}
-        nodes_prev = {}
-        for n in nodes_unvisited:
-            paths[n] = self.dj_max
-        return []
+
+    def send_register_response(self, switch_id=None):
+        if switch_id == None:
+            switches = self.registery.values()
+        else:
+            switches = [self.registery[switch_id],]
+        for s in switches:
+            self.log_register_response_sent(s.id)
 
 
-# Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
-LOG_FILE = "Controller.log"
-
-# Those are logging functions to help you follow the correct logging standard
-
-# "Register Request" Format is below:
-#
-# Timestamp
-# Register Request <Switch-ID>
-
-def register_request_received(switch_id):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append(f"Register Request {switch_id}\n")
-    write_to_log(log)
-
-# "Register Responses" Format is below (for every switch):
-#
-# Timestamp
-# Register Response <Switch-ID>
-
-def register_response_sent(switch_id):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append(f"Register Response {switch_id}\n")
-    write_to_log(log) 
+    def dump_log(self):
+        try:
+            assert self.lock.locked()
+        except: print('STOP BEING TRASH AT THREADDING :(')
+        with open(self.log_file_name, 'a+') as log_file:
+            log_file.write("\n\n")
+            log_file.writelines(self.log)
+            self.log = []
+    # Timestamp
+    # Register Request <Switch-ID>
+    def log_register_request_received(self, switch_id):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append(f"Register Request {switch_id}\n")
+        self.dump_log()
+    # Timestamp
+    # Register Response <Switch-ID>
+    def log_register_response_sent(self, switch_id):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append(f"Register Response {switch_id}\n")
+        self.dump_log() 
 
 # For the parameter "routing_table", it should be a list of lists in the form of [[...], [...], ...]. 
 # Within each list in the outermost list, the first element is <Switch ID>. The second is <Dest ID>, and the third is <Next Hop>, and the fourth is <Shortest distance>
@@ -88,7 +126,6 @@ def register_response_sent(switch_id):
 # For any switch that has been killed, do not include the routes that are going out from that switch. 
 # One example can be found in the sample log in starter code. 
 # After switch 1 is killed, the routing update from the controller does not have routes from switch 1 to other switches.
-
 def routing_table_update(routing_table):
     log = []
     log.append(str(datetime.time(datetime.now())) + "\n")
@@ -102,7 +139,6 @@ def routing_table_update(routing_table):
 #
 #  Timestamp
 #  Link Dead <Switch ID 1>,<Switch ID 2>
-
 def topology_update_link_dead(switch_id_1, switch_id_2):
     log = []
     log.append(str(datetime.time(datetime.now())) + "\n")
@@ -113,7 +149,6 @@ def topology_update_link_dead(switch_id_1, switch_id_2):
 #
 #  Timestamp
 #  Switch Dead <Switch ID>
-
 def topology_update_switch_dead(switch_id):
     log = []
     log.append(str(datetime.time(datetime.now())) + "\n")
@@ -124,18 +159,12 @@ def topology_update_switch_dead(switch_id):
 #
 #  Timestamp
 #  Switch Alive <Switch ID>
-
 def topology_update_switch_alive(switch_id):
     log = []
     log.append(str(datetime.time(datetime.now())) + "\n")
     log.append(f"Switch Alive {switch_id}\n")
     write_to_log(log) 
 
-def write_to_log(log):
-    with open(LOG_FILE, 'a+') as log_file:
-        log_file.write("\n\n")
-        # Write to log
-        log_file.writelines(log)
 
 def read_config(f_name):
     lines = [line.strip() for line in open(f_name, 'r')]
@@ -145,8 +174,28 @@ def read_config(f_name):
     }
     return cfg
 
-def run_listner(port, queue):
+def run_listner(port:int)->None:
     listner = Listener(port)
+    listner.start()
+
+def handle_event(event, controller:Controller)->None:
+    (host, port), text = event
+    text = text.decode()
+    text = [l.split() for l in text.split('\n')]
+    try:
+        if text[0][1].lower() == 'register_request':
+            controller.lock.acquire()
+            switch_id = int(text[0][0])
+            switch = Switch(switch_id, host, port) 
+            controller.registery[switch_id] = switch
+            controller.log_register_request_received(switch_id)
+            controller.lock.release()
+            print(switch)
+            print(f'registered {text[0][0]}')
+    except Exception as e:
+        if controller.lock.locked():
+            controller.lock.release()
+        print(f'{e}\nERROR READING EVENT: {host}:{port}\n{text}\n')
 
 def main():
     parser = argparse.ArgumentParser(
@@ -158,15 +207,28 @@ def main():
     
     # Write your code below or elsewhere in this file
     cfg = read_config(args.config_path)
-    print(cfg)
     controller = Controller(cfg)
-    print(controller.map)
-    print(controller.paths)
 
-    print('waiting for sockets to connect...')
-
-    listner_thread = threading.Thread(target=run_listner, args=(args.port, {}))
+    listner_thread = threading.Thread(target=run_listner, args=(args.port,))
     listner_thread.start()
+
+    # wait for all the switches to register
+    do_break = False
+    while not do_break:
+        if len(event_queue) > 0:
+            event  = event_queue_pop()
+            thread = threading.Thread(target=handle_event, args=(event, controller))
+            thread.start()
+
+        controller.lock.acquire()
+        if controller.topology == len(controller.registery.keys()):
+            do_break = True
+        controller.lock.release()
+    print('\n\nbootstrap process completed'.upper())
+    print(controller)
+    controller.lock.acquire()
+    controller.send_register_response()
+    controller.lock.release()
 
 if __name__ == "__main__":
     main()

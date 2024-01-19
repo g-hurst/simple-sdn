@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import heapq
 
 def dijkstra_with_path(graph, start):
