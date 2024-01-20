@@ -4,8 +4,6 @@ import sys
 from datetime import date, datetime
 import argparse
 import socket
-import selectors
-import types
 import threading
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
