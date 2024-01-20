@@ -5,6 +5,7 @@ from datetime import date, datetime
 import argparse
 import socket
 import threading
+import json
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "Controller.log"
@@ -26,17 +27,17 @@ class Listener():
         self._stay_alive = threading.Event()
         self._stay_alive.set()
         self._thread = None
+    def kill(self):
+        self._stay_alive.clear()        
     def start(self):
         self._thread = threading.Thread(target=self._start, args=(self._stay_alive,))
         self._thread.start()
-    def kill(self):
-        self._stay_alive.clear()
-        
     def _start(self, event):
         try:
             print(f'listner (UDP) spinning up on: {socket.gethostname()}:{self.port}')
             while event.is_set():
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.settimeout(15)
                 sock.bind((socket.gethostname(), self.port))
                 while True:
@@ -64,6 +65,7 @@ class Switch():
     def send(self, msg):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.sendto(bytes(msg, "utf-8"), (self.host, self.port))
+        print(f'sent to {(self.host, self.port)}')
 
 class Controller():
     def __init__(self, cfg):
@@ -97,11 +99,13 @@ class Controller():
         else:
             switches = [self.registery[switch_id],]
         for s in switches:
-            response = [f'{s.id}',]
-            for neighbor_id in self.map[s.id].keys():
-                response.append(f'{self.registery[neighbor_id].id} {self.registery[neighbor_id].host} {self.registery[neighbor_id].port}')
-            response = '\n'.join(response)
-            s.send(response)
+            msg = {'action':'register_response',
+                    'data': {'id':s.id, 
+                             'table':[(self.registery[neighbor_id].id, 
+                                       self.registery[neighbor_id].host, 
+                                       self.registery[neighbor_id].port) for neighbor_id in self.map[s.id].keys()]}}
+
+            s.send(json.dumps(msg))
             self.log_register_response_sent(s.id)
 
     def dump_log(self):
@@ -196,17 +200,16 @@ def read_config(f_name):
     return cfg
 
 def handle_event(event, controller:Controller)->None:
-    (host, port), text = event
-    text = text.decode()
-    text = [l.split() for l in text.split('\n')]
+    (host, port), data = event
+    data = json.loads(data.decode())
     try:
-        if text[0][1].lower() == 'register_request':
+        if data['action'] == 'register_request':
             with controller.lock:
-                switch_id = int(text[0][0])
+                switch_id = data['data']
                 switch = Switch(switch_id, host, port) 
                 controller.registery[switch_id] = switch
                 controller.log_register_request_received(switch_id)
-            print(f'registered {text[0][0]}')
+            print(f'registered {switch_id}')
 
         # not locked becasue is_booted is only modified one time within
         # a lock after the bootstrap process is completed
@@ -216,7 +219,7 @@ def handle_event(event, controller:Controller)->None:
     except Exception as e:
         if controller.lock.locked():
             controller.lock.release()
-        print(f'{e}\nERROR READING EVENT: {host}:{port}\n{text}\n')
+        print(f'{e}\nERROR READING EVENT: {host}:{port}\n{data}\n')
 
 def loop_handle_events(controller, do_break=lambda: False):
     success = True

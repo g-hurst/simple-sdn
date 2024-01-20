@@ -4,6 +4,7 @@ import argparse
 import socket
 import threading
 import subprocess
+import random
 
 def send_udp_packet(hostname, port, iteration):
     message = f"{iteration} Register_Request"
@@ -20,7 +21,6 @@ def start_switch(hostname, port, iteration):
         subprocess.run(args, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Failed to start switch {iteration} to {hostname}:{port}. Error: {e}")
-
 
 def main():
     # Create argument parser
