@@ -61,6 +61,9 @@ class Switch():
         return msg
     def __repr__(self):
         return f'<Switch({self.id})>'
+    def send(self, msg):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(bytes(msg, "utf-8"), (self.host, self.port))
 
 class Controller():
     def __init__(self, cfg):
@@ -94,8 +97,12 @@ class Controller():
         else:
             switches = [self.registery[switch_id],]
         for s in switches:
+            response = [f'{s.id}',]
+            for neighbor_id in self.map[s.id].keys():
+                response.append(f'{self.registery[neighbor_id].id} {self.registery[neighbor_id].host} {self.registery[neighbor_id].port}')
+            response = '\n'.join(response)
+            s.send(response)
             self.log_register_response_sent(s.id)
-
 
     def dump_log(self):
         try:
@@ -188,10 +195,6 @@ def read_config(f_name):
     }
     return cfg
 
-def run_listner(port:int)->None:
-    listner = Listener(port)
-    listner.start()
-
 def handle_event(event, controller:Controller)->None:
     (host, port), text = event
     text = text.decode()
@@ -203,7 +206,6 @@ def handle_event(event, controller:Controller)->None:
                 switch = Switch(switch_id, host, port) 
                 controller.registery[switch_id] = switch
                 controller.log_register_request_received(switch_id)
-            print(switch)
             print(f'registered {text[0][0]}')
 
         # not locked becasue is_booted is only modified one time within
@@ -266,6 +268,7 @@ def main():
         with controller.lock:
             controller.send_register_response()
             controller.is_booted = True
+        print('\n\nRegister responses sent'.upper())
 
         # start the main controller process 
         print('\n\nStarting main controller process'.upper())
