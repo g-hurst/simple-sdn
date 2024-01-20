@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import argparse
 import socket
 import threading 
@@ -65,10 +65,11 @@ class Switch():
         self.host = host
         self.port = port
         self.lock = threading.Lock()
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.log_file_name = LOG_FILE
         self.log_file_lock = threading.Lock()
         self.log       = []
+        self.alive_ping_age = datetime.now()
+        self.alive_ping_delta = timedelta(seconds=2)
     def register(self):
         msg = {'action':'register_request', 'data':self.id}
         send_queue_append((json.dumps(msg).encode(), (self.host, self.port)))
@@ -76,6 +77,10 @@ class Switch():
 
     def handle_register_response(self, data):
         self.log_register_response_received()
+
+    def alive_ping(self):
+        pass
+
 
     def dump_log(self):
         with self.log_file_lock:
@@ -145,7 +150,6 @@ def write_to_log(log):
         log_file.writelines(log)
 
 def handle_event(event, switch)->None:
-    # print(f'event detected: {event}')
     (host, port), data = event
     data = json.loads(data.decode())
     try:
@@ -153,7 +157,6 @@ def handle_event(event, switch)->None:
             if switch.id != data['data']['id']:
                 raise Exception('wrong register response recieved Switch({}) got {}'.format(switch.id, data['data']['id']))
             
-
     except Exception as e:
         if switch.lock.locked():
             switch.lock.release()
@@ -163,6 +166,13 @@ def loop_handle_events(switch, do_break=lambda: False):
     success = True
     try:
         while not do_break():
+            with switch.lock:
+                do_alive_ping = (datetime.now() - switch.alive_ping_age > switch.alive_ping_delta)
+                if do_alive_ping:
+                    switch.alive_ping()
+                    switch.alive_ping_age = datetime.now()
+                    print('time 2 ping')
+
             if len(event_queue) > 0:
                 event  = event_queue_pop()
                 thread = threading.Thread(target=handle_event, args=(event, switch))

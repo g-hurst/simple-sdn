@@ -203,7 +203,7 @@ def handle_event(event, controller:Controller)->None:
     (host, port), data = event
     data = json.loads(data.decode())
     try:
-        if data['action'] == 'register_request':
+        if data['action'].lower() == 'register_request':
             with controller.lock:
                 switch_id = data['data']
                 switch = Switch(switch_id, host, port) 
