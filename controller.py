@@ -109,9 +109,7 @@ class Controller():
             self.log_register_response_sent(s.id)
 
     def dump_log(self):
-        try:
-            assert self.lock.locked()
-        except: print('STOP BEING TRASH AT THREADDING :(')
+        assert self.lock.locked()
         with open(self.log_file_name, 'a+') as log_file:
             log_file.write("\n\n")
             log_file.writelines(self.log)
