@@ -12,30 +12,45 @@ import threading
 LOG_FILE = "Controller.log"
 
 event_queue = []
+event_queue_lock = threading.Lock()
 def event_queue_pop(n=0):
-    lock = threading.Lock()
-    lock.acquire()
-    val = event_queue.pop(n)
-    lock.release()
+    with event_queue_lock:
+        val = event_queue.pop(n)
     return val
 def event_queue_append(event):
-    lock = threading.Lock()
-    lock.acquire()
-    event_queue.append(event)
-    lock.release()
+    with event_queue_lock:
+        event_queue.append(event)
 
 class Listener():
     def __init__(self, port):
         self.port = port
         self.lock = threading.Lock()
+        self._stay_alive = threading.Event()
+        self._stay_alive.set()
+        self._thread = None
     def start(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((socket.gethostname(), self.port))
-        print(f'listner (UDP) started on port: {socket.gethostname()}:{self.port}')
-        while True:
-            data, addr = sock.recvfrom(1024)
-            # print(f'{addr}: {data}')
-            event_queue_append((addr, data))
+        self._thread = threading.Thread(target=self._start, args=(self._stay_alive,))
+        self._thread.start()
+    def kill(self):
+        self._stay_alive.clear()
+        
+    def _start(self, event):
+        try:
+            print(f'listner (UDP) spinning up on: {socket.gethostname()}:{self.port}')
+            while event.is_set():
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(15)
+                sock.bind((socket.gethostname(), self.port))
+                while True:
+                    try: 
+                        data, addr = sock.recvfrom(1024)
+                        event_queue_append((addr, data))
+                    except socket.timeout:
+                        break
+            print(f'listner (UDP) killed on: {socket.gethostname()}:{self.port}')
+        except KeyboardInterrupt:
+            print('keyboard interrupt in listner loop'.upper())
+            self.kill()
 
 class Switch():
     def __init__(self, id, host, port):
@@ -61,6 +76,7 @@ class Controller():
         self.registery = dict()
         self.log_file_name = LOG_FILE
         self.log       = []
+        self.is_booted = False
     def __str__(self, blocking=True):
         if blocking: self.lock.acquire()
         msg = 'Controller:\n  '
@@ -184,18 +200,38 @@ def handle_event(event, controller:Controller)->None:
     text = [l.split() for l in text.split('\n')]
     try:
         if text[0][1].lower() == 'register_request':
-            controller.lock.acquire()
-            switch_id = int(text[0][0])
-            switch = Switch(switch_id, host, port) 
-            controller.registery[switch_id] = switch
-            controller.log_register_request_received(switch_id)
-            controller.lock.release()
+            with controller.lock:
+                switch_id = int(text[0][0])
+                switch = Switch(switch_id, host, port) 
+                controller.registery[switch_id] = switch
+                controller.log_register_request_received(switch_id)
             print(switch)
             print(f'registered {text[0][0]}')
+
+        # not locked becasue is_booted is only modified one time within
+        # a lock after the bootstrap process is completed
+        if controller.is_booted:
+            pass
+
     except Exception as e:
         if controller.lock.locked():
             controller.lock.release()
         print(f'{e}\nERROR READING EVENT: {host}:{port}\n{text}\n')
+
+def loop_handle_events(controller, do_break=lambda: False):
+    success = True
+    try:
+        while not do_break():
+            if len(event_queue) > 0:
+                event  = event_queue_pop()
+                thread = threading.Thread(target=handle_event, args=(event, controller))
+                thread.start()
+    except KeyboardInterrupt:
+        print('keyboard interrupt in loop_handle_events()')
+        success = False
+        if controller.lock.locked():
+            controller.lock.release()
+    return success
 
 def main():
     parser = argparse.ArgumentParser(
@@ -209,26 +245,37 @@ def main():
     cfg = read_config(args.config_path)
     controller = Controller(cfg)
 
-    listner_thread = threading.Thread(target=run_listner, args=(args.port,))
-    listner_thread.start()
+    print('\n\nStarting listner'.upper())
+    listner = Listener(args.port)
+    listner.start()
 
-    # wait for all the switches to register
+    # bootstraping process
+    # waiting for all switches to register
+    # all events that are not register requests durring this time are ignored
     do_break = False
-    while not do_break:
-        if len(event_queue) > 0:
-            event  = event_queue_pop()
-            thread = threading.Thread(target=handle_event, args=(event, controller))
-            thread.start()
-
-        controller.lock.acquire()
-        if controller.topology == len(controller.registery.keys()):
-            do_break = True
-        controller.lock.release()
-    print('\n\nbootstrap process completed'.upper())
+    def is_booted():
+        ret = False
+        with controller.lock:
+            if controller.topology == len(controller.registery.keys()):
+                ret = True
+        return ret
+    success = loop_handle_events(controller, is_booted)
+    print(f'\n\nBootstrap process completed: success = {success}'.upper())
     print(controller)
-    controller.lock.acquire()
-    controller.send_register_response()
-    controller.lock.release()
+
+    if success:
+        # bootstraping process complete, so broadcast register responses
+        with controller.lock:
+            controller.send_register_response()
+            controller.is_booted = True
+
+        # start the main controller process 
+        print('\n\nStarting main controller process'.upper())
+        success = loop_handle_events(controller)
+        print(f'\n\nMain controller process completed: success = {success}'.upper())
+
+    listner.kill()
+    print('program complete ')
 
 if __name__ == "__main__":
     main()
