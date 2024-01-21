@@ -34,7 +34,7 @@ def main():
 
     # Send five UDP packets concurrently
     threads = []
-    for i in range(6):
+    for i in range(3):
         thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, i))
         threads.append(thread)
         thread.start()

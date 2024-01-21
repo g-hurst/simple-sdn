@@ -6,6 +6,7 @@ import argparse
 import socket
 import threading
 import json
+import heapq
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "Controller.log"
@@ -64,14 +65,14 @@ class Switch():
         return f'<Switch({self.id})>'
     def send(self, msg):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(bytes(msg, "utf-8"), (self.host, self.port))
-        print(f'sent to {(self.host, self.port)}')
+        sock.sendto(msg.encode(), (self.host, self.port))
 
 class Controller():
     def __init__(self, cfg):
-        self.dj_max   = sys.maxsize
+        self.djk_max   = sys.maxsize
         self.topology = cfg.get('num_switches')
-        self.map      = {}
+        self.map           = {}
+        self.routing_table = {}
         for edge in cfg.get('edges'): 
             self.update_map(edge)
         self.paths     = {}
@@ -93,6 +94,37 @@ class Controller():
         if self.map.get(edge[1]) == None: self.map[edge[1]]          = {edge[0]: edge[2]}
         else:                             self.map[edge[1]][edge[0]] = edge[2]
 
+    def calc_routing_table_djk(self):
+        for start in self.map:
+            # do djkstras
+            distances = {node: self.djk_max for node in self.map}
+            distances[start] = 0
+            paths = {node: [start,] for node in self.map}
+            visited = set()
+            queue = [(0, start)]
+            while queue:
+                current_distance, current_node = heapq.heappop(queue)
+                if current_node not in visited:
+                    visited.add(current_node)
+                    for adjacent, weight in self.map[current_node].items():
+                        distance = current_distance + weight
+                        if distance < distances[adjacent]:
+                            distances[adjacent] = distance
+                            paths[adjacent] = paths[current_node] + [adjacent]
+                            heapq.heappush(queue, (distance, adjacent))
+            
+            # unwrap the info for the table
+            row = []
+            for k in self.map:
+                dest_id  = paths[k][-1]
+                if len(paths[k]) > 1:
+                    next_hop = paths[k][1]
+                else:
+                    next_hop = dest_id
+                row.append((dest_id, next_hop, distances[k]))
+            self.routing_table[start] = row
+
+
     def send_register_response(self, switch_id=None):
         if switch_id == None:
             switches = self.registery.values()
@@ -107,6 +139,15 @@ class Controller():
 
             s.send(json.dumps(msg))
             self.log_register_response_sent(s.id)
+    def send_routing_table_update(self, switch_id=None):
+        if switch_id == None:
+            switches = self.registery.values()
+        else:
+            switches = [self.registery[switch_id],]
+        for s in switches:
+            msg = {'action':'routing_update', 'data':self.routing_table[s.id]}
+            s.send(json.dumps(msg))
+        self.log_routing_table_update()
 
     def dump_log(self):
         assert self.lock.locked()
@@ -126,37 +167,20 @@ class Controller():
         self.log.append(str(datetime.time(datetime.now())) + "\n")
         self.log.append(f"Register Response {switch_id}\n")
         self.dump_log() 
-
-# For the parameter "routing_table", it should be a list of lists in the form of [[...], [...], ...]. 
-# Within each list in the outermost list, the first element is <Switch ID>. The second is <Dest ID>, and the third is <Next Hop>, and the fourth is <Shortest distance>
-# "Routing Update" Format is below:
-#
-# Timestamp
-# Routing Update 
-# <Switch ID>,<Dest ID>:<Next Hop>,<Shortest distance>
-# ...
-# ...
-# Routing Complete
-#
-# You should also include all of the Self routes in your routing_table argument -- e.g.,  Switch (ID = 4) should include the following entry: 		
-# 4,4:4,0
-# 0 indicates ‘zero‘ distance
-#
-# For switches that can’t be reached, the next hop and shortest distance should be ‘-1’ and ‘9999’ respectively. (9999 means infinite distance so that that switch can’t be reached)
-#  E.g, If switch=4 cannot reach switch=5, the following should be printed
-#  4,5:-1,9999
-#
-# For any switch that has been killed, do not include the routes that are going out from that switch. 
-# One example can be found in the sample log in starter code. 
-# After switch 1 is killed, the routing update from the controller does not have routes from switch 1 to other switches.
-def routing_table_update(routing_table):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append("Routing Update\n")
-    for row in routing_table:
-        log.append(f"{row[0]},{row[1]}:{row[2]},{row[3]}\n")
-    log.append("Routing Complete\n")
-    write_to_log(log)
+    # Timestamp
+    # Routing Update 
+    # <Switch ID>,<Dest ID>:<Next Hop>,<Shortest distance>
+    # ...
+    # ...
+    # Routing Complete
+    def log_routing_table_update(self):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append("Routing Update\n")
+        for switch_id in sorted(self.routing_table.keys()):
+            for dest_id, next_hop, dist_min in sorted(self.routing_table[switch_id], key=lambda x: x[0]):
+                self.log.append(f"{switch_id},{dest_id}:{next_hop},{dist_min}\n")
+        self.log.append("Routing Complete\n")
+        self.dump_log()
 
 # "Topology Update: Link Dead" Format is below: (Note: We do not require you to print out Link Alive log in this project)
 #
@@ -267,9 +291,13 @@ def main():
     if success:
         # bootstraping process complete, so broadcast register responses
         with controller.lock:
-            controller.send_register_response()
             controller.is_booted = True
-        print('\n\nRegister responses sent'.upper())
+            controller.send_register_response()
+            print('\n\nRegister responses sent'.upper())
+
+            controller.calc_routing_table_djk()
+            controller.send_routing_table_update()
+            print(f'\n\nCalculated and writing routing table'.upper())
 
         # start the main controller process 
         print('\n\nStarting main controller process'.upper())
