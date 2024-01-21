@@ -100,6 +100,7 @@ class Switch():
         self.alive_ping_age   = datetime.now()
         self.alive_ping_delta = timedelta(seconds=K)
         self.neighbors = dict()
+        self.routing_table = []
 
     def register(self):
         msg = {'action':'register_request', 'data':self.id}
@@ -120,6 +121,10 @@ class Switch():
         assert self.lock.locked()
         with self.neighbors[nb_id].lock:
             self.neighbors[nb_id].alive_ping_age = datetime.now()
+    def handle_routing_table_update(self, table):
+        assert self.lock.locked()
+        self.routing_table = table
+        self.log_routing_table_update()
 
     def do_alive_ping(self):
         for n in self.neighbors.values():
@@ -150,28 +155,19 @@ class Switch():
         self.log.append(str(datetime.time(datetime.now())) + "\n")
         self.log.append(f"Neighbor Dead {switch_id}\n")
         self.dump_log() 
-
-# For the parameter "routing_table", it should be a list of lists in the form of [[...], [...], ...]. 
-# Within each list in the outermost list, the first element is <Switch ID>. The second is <Dest ID>, and the third is <Next Hop>.
-# "Routing Update" Format is below:
-#
-# Timestamp
-# Routing Update 
-# <Switch ID>,<Dest ID>:<Next Hop>
-# ...
-# ...
-# Routing Complete
-# 
-# You should also include all of the Self routes in your routing_table argument -- e.g.,  Switch (ID = 4) should include the following entry: 		
-# 4,4:4
-def routing_table_update(routing_table):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append("Routing Update\n")
-    for row in routing_table:
-        log.append(f"{row[0]},{row[1]}:{row[2]}\n")
-    log.append("Routing Complete\n")
-    write_to_log(log)
+    # Timestamp
+    # Routing Update 
+    # <Switch ID>,<Dest ID>:<Next Hop>
+    # ...
+    # ...
+    # Routing Complete
+    def log_routing_table_update(self):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append("Routing Update\n")
+        for dest_id, next_hop, _ in self.routing_table:
+            self.log.append(f"{self.id},{dest_id}:{next_hop}\n")
+        self.log.append("Routing Complete\n")
+        self.dump_log()
 
 # "Unresponsive/Dead Neighbor comes back online" Format is below:
 #
@@ -202,6 +198,9 @@ def handle_event(event, switch)->None:
         elif action == 'keep_alive':
             with switch.lock:
                 switch.handle_alive_ping(data['data'])
+        elif action == 'routing_update':
+            with switch.lock:
+                switch.handle_routing_table_update(data['data'])
         
     except Exception as e:
         if switch.lock.locked():
