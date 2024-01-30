@@ -14,57 +14,59 @@ LOG_FILE = "switch#.log" # The log file for switches are switch#.log, where # is
 K = 2               # every K seconds, a broadcast alive ping to all neighbors
 TIMEOUT = 3 * K     # neighbors flagged as DEAD if have not recieved an alive ping by timeout
 
-event_queue = []
-event_queue_lock = threading.Lock()
-def event_queue_pop(n=0):
-    with event_queue_lock:
-        val = event_queue.pop(n)
-    return val
-def event_queue_append(event):
-    with event_queue_lock:
-        event_queue.append(event)
-
-send_queue = []
-send_queue_lock = threading.Lock()
-def send_queue_pop(n=0):
-    with send_queue_lock:
-        val = send_queue.pop(n)
-    return val
-def send_queue_append(event, front=False):
-    with send_queue_lock:
-        if front:
-            send_queue.insert(0, event)
-        else:
-            send_queue.append(event)
-def send_queue_size():
-    with send_queue_lock:
-        sz = len(send_queue)
-    return sz
-
 class Listener(threading.Thread):
     def __init__(self, socket):
         super().__init__()
         self._sock = socket
+        self._event_queue = []
+        self._event_queue_lock = threading.Lock()
     def run(self):
         print(f'listner (UDP) spinning up on: {self._sock.getsockname()}')
         while True:
             try:
                 data, addr = self._sock.recvfrom(1024)
-                event_queue_append((addr, data))
+                self._event_queue_append((addr, data))
             except Exception as e:
                 print(f'Listner broke: {e}')
                 break
         print(f'listner (UDP) killed on: {self._sock.getsockname()}')
+    def event_queue_pop(self, n=0):
+        with self._event_queue_lock:
+            val = self._event_queue.pop(n)
+        return val
+    def _event_queue_append(self, event):
+        with self._event_queue_lock:
+            self._event_queue.append(event)
+    def event_queue_size(self):
+        with self._event_queue_lock:
+            sz = len(self._event_queue)
+        return sz
 
 
 class Sender(threading.Thread):
     def __init__(self, socket):
         super().__init__()
         self._sock = socket
+        self._send_queue = []
+        self._send_queue_lock = threading.Lock()
     def run(self):
         while True:
-            if send_queue_size() > 0:
-                self._sock.sendto( *send_queue_pop() )
+            if self.send_queue_size() > 0:
+                self._sock.sendto( *self._send_queue_pop() )
+    def _send_queue_pop(self, n=0):
+        with self._send_queue_lock:
+            val = self._send_queue.pop(n)
+        return val
+    def send_queue_append(self, event, front=False):
+        with self._send_queue_lock:
+            if front:
+                self._send_queue.insert(0, event)
+            else:
+                self._send_queue.append(event)
+    def send_queue_size(self):
+        with self._send_queue_lock:
+            sz = len(self._send_queue)
+        return sz
         
 class Neighbor():
     def __init__(self, nb_id, host, port):
@@ -91,10 +93,11 @@ class Neighbor():
         return is_alv
 
 class Switch():
-    def __init__(self, sw_id, host, port):
+    def __init__(self, sw_id, host, port, sender):
         self.id   = sw_id
         self.host = host
         self.port = port
+        self.sender = sender
         self.lock = threading.Lock()
         self.log_file_name = LOG_FILE
         self.log_file_lock = threading.Lock()
@@ -106,7 +109,7 @@ class Switch():
 
     def register(self):
         msg = {'action':'register_request', 'data':self.id}
-        send_queue_append((json.dumps(msg).encode(), (self.host, self.port)))
+        self.sender.send_queue_append((json.dumps(msg).encode(), (self.host, self.port)))
         self.log_register_request_sent()
 
     def handle_register_response(self, table):
@@ -132,7 +135,7 @@ class Switch():
     def do_alive_ping(self):
         for n in self.neighbors.values():
             msg = {'action':'keep_alive', 'data':self.id}
-            send_queue_append((json.dumps(msg).encode(), (n.host, n.port)), front=True)
+            self.sender.send_queue_append((json.dumps(msg).encode(), (n.host, n.port)), front=True)
 
     def dump_log(self):
         with self.log_file_lock:
@@ -210,7 +213,7 @@ def handle_event(event, switch)->None:
             switch.lock.release()
         print(f'\nerrmsg: "{e}"\nERROR READING EVENT: {host}:{port}\n{data}\n')
 
-def loop_handle_events(switch, do_break=lambda: False):
+def loop_handle_events(switch, listner, do_break=lambda: False):
     success = True
     try:
         while not do_break():
@@ -225,8 +228,8 @@ def loop_handle_events(switch, do_break=lambda: False):
                     if not switch.neighbors[nb_id].is_alive():
                         switch.handle_neighbor_dead(nb_id)
 
-            if len(event_queue) > 0:
-                event  = event_queue_pop()
+            if listner.event_queue_size() > 0:
+                event  = listner.event_queue_pop()
                 thread = threading.Thread(target=handle_event, args=(event, switch))
                 thread.start()
     except KeyboardInterrupt:
@@ -270,10 +273,10 @@ def main():
     sender.start()
 
     print('\n\nSenging register request to controller'.upper())
-    switch = Switch(args.id, args.controller_hostname, args.controller_port)
+    switch = Switch(args.id, args.controller_hostname, args.controller_port, sender)
     switch.register()
 
-    success = loop_handle_events(switch)
+    success = loop_handle_events(switch, listner)
     print(f'\n\nSwitch process complete: success = {success}'.upper())
 
     
