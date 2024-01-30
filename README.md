@@ -32,7 +32,8 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -f NEIGHBORID, --neighborID NEIGHBORID
-                        Uded for testing: The switch will run as usual, but the link to neighborID is killed to simulate failure
+                        Uded for testing: The switch will run as usual, but the link to
+                        neighborID is killed to simulate failure
 ```
 
 
