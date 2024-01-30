@@ -6,6 +6,7 @@ import argparse
 import socket
 import threading 
 import json
+import copy
 
 # Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
 LOG_FILE = "switch#.log" # The log file for switches are switch#.log, where # is the id of that switch (i.e. switch0.log, switch1.log). The code for replacing # with a real number has been given to you in the main function.
@@ -73,6 +74,7 @@ class Neighbor():
         self.lock = threading.Lock()
         self.alive_ping_age = datetime.now()
         self.alive_ping_delta = timedelta(seconds=TIMEOUT)
+        self._is_alive = True
     def __str__(self, blocking=True):
         if blocking: self.lock.acquire()
         msg = 'Neighbor:\n  '
@@ -114,7 +116,8 @@ class Switch():
             self.neighbors[row[0]] = Neighbor(*row)
         self.log_register_response_received()
     def handle_neighbor_dead(self, nb_id:int):
-        # TODO: fix spam when neighbor dies
+        assert self.lock.locked()
+        self.neighbors.pop(nb_id)
         print(f'DEAD: {self.id}->{nb_id}')
         self.log_neighbor_dead(nb_id)
     def handle_alive_ping(self, nb_id:int):
@@ -218,9 +221,9 @@ def loop_handle_events(switch, do_break=lambda: False):
                     switch.alive_ping_age = datetime.now()
 
                 # handle dead neighbors
-                for n in switch.neighbors.values():
-                    if not n.is_alive():
-                        switch.handle_neighbor_dead(n.id)
+                for nb_id in copy.deepcopy(list(switch.neighbors.keys())):
+                    if not switch.neighbors[nb_id].is_alive():
+                        switch.handle_neighbor_dead(nb_id)
 
             if len(event_queue) > 0:
                 event  = event_queue_pop()

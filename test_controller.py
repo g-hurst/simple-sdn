@@ -29,12 +29,15 @@ def main():
     parser.add_argument("port", type=int, help="Target port")
     args = parser.parse_args()
 
+    # clean dem logz
+    subprocess.run(['rm *.log'], shell=True)
+
     # NOTE: how to change tests
     test_fn = start_switch
 
     # Send five UDP packets concurrently
     threads = []
-    for i in range(3):
+    for i in range(6):
         thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, i))
         threads.append(thread)
         thread.start()
