@@ -7,6 +7,7 @@ import socket
 import threading
 import json
 import heapq
+from copy import deepcopy
 
 from com import Listener, Sender, PING_TIME, TIMEOUT
 
@@ -40,6 +41,7 @@ class Controller():
         self.djk_max   = sys.maxsize
         self.topology = cfg.get('num_switches')
         self.map           = {}
+        self.bootstrapped_map = {}
         self.routing_table = {}
         for edge in cfg.get('edges'): 
             self.update_map(edge)
@@ -127,8 +129,20 @@ class Controller():
         print(f'registered {switch_id}')
     
     def handle_topology_update(self, top_update):
-        print(f'hadling update: {top_update}')
-
+        assert self.lock.locked()
+        do_calc = False
+        sw_id = list(top_update.keys())[0]
+        if int(sw_id) in self.map:
+            for link_id in deepcopy(list(self.map[int(sw_id)].keys())):
+                if link_id not in top_update[sw_id]:
+                    do_calc = True
+                    self.log_topology_update_link_dead(sw_id, link_id)
+                    self.map[int(sw_id)].pop(link_id)
+                    print(f'link dead {sw_id}->{link_id}')
+            if do_calc:
+                self.calc_routing_table_djk()
+                self.send_routing_table_update()
+                
     def dump_log(self):
         assert self.lock.locked()
         with open(self.log_file_name, 'a+') as log_file:
@@ -161,16 +175,12 @@ class Controller():
                 self.log.append(f"{switch_id},{dest_id}:{next_hop},{dist_min}\n")
         self.log.append("Routing Complete\n")
         self.dump_log()
-
-# "Topology Update: Link Dead" Format is below: (Note: We do not require you to print out Link Alive log in this project)
-#
-#  Timestamp
-#  Link Dead <Switch ID 1>,<Switch ID 2>
-def topology_update_link_dead(switch_id_1, switch_id_2):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append(f"Link Dead {switch_id_1},{switch_id_2}\n")
-    write_to_log(log) 
+    #  Timestamp
+    #  Link Dead <Switch ID 1>,<Switch ID 2>
+    def log_topology_update_link_dead(self, switch_id_1, switch_id_2):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append(f"Link Dead {switch_id_1},{switch_id_2}\n")
+        self.dump_log() 
 
 # "Topology Update: Switch Dead" Format is below:
 #
@@ -271,6 +281,7 @@ def main():
                 ret = True
         return ret
     success = loop_handle_events(controller, listener, is_booted)
+    controller.bootstrapped_map = deepcopy(controller.map)
     print(f'\n\nBootstrap process completed: success = {success}'.upper())
     print(controller)
 
