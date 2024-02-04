@@ -1,3 +1,4 @@
 *.log
 zip.lst
 submission.zip
+__pycache__

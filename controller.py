@@ -1,62 +1,26 @@
 #!/usr/bin/env python3
 
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import argparse
 import socket
 import threading
 import json
 import heapq
 
-# Please do not modify the name of the log file, otherwise you will lose points because the grader won't be able to find your log file
+from com import Listener, Sender, PING_TIME, TIMEOUT
+
 LOG_FILE = "Controller.log"
 
-event_queue = []
-event_queue_lock = threading.Lock()
-def event_queue_pop(n=0):
-    with event_queue_lock:
-        val = event_queue.pop(n)
-    return val
-def event_queue_append(event):
-    with event_queue_lock:
-        event_queue.append(event)
-
-class Listener():
-    def __init__(self, port):
-        self.port = port
-        self.lock = threading.Lock()
-        self._stay_alive = threading.Event()
-        self._stay_alive.set()
-        self._thread = None
-    def kill(self):
-        self._stay_alive.clear()        
-    def start(self):
-        self._thread = threading.Thread(target=self._start, args=(self._stay_alive,))
-        self._thread.start()
-    def _start(self, event):
-        try:
-            print(f'listner (UDP) spinning up on: {socket.gethostname()}:{self.port}')
-            while event.is_set():
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.settimeout(15)
-                sock.bind(('0.0.0.0', self.port))
-                while True:
-                    try: 
-                        data, addr = sock.recvfrom(1024)
-                        event_queue_append((addr, data))
-                    except socket.timeout:
-                        break
-            print(f'listner (UDP) killed on: {socket.gethostname()}:{self.port}')
-        except KeyboardInterrupt:
-            print('keyboard interrupt in listner loop'.upper())
-            self.kill()
-
 class Switch():
-    def __init__(self, id, host, port):
+    def __init__(self, id, host, port, sender):
         self.id   = id
         self.host = host
         self.port = port
+        self._lock   = threading.Lock()
+        self._sender = sender
+        self.ping_age   = datetime.now()
+        self.ping_delta = timedelta(seconds=PING_TIME)
     def __str__(self):
         msg = 'Switch:\n  '
         msg += '\n  '.join([f'{k} == {v}' for (k,v) in self.__dict__.items()])
@@ -64,17 +28,22 @@ class Switch():
     def __repr__(self):
         return f'<Switch({self.id})>'
     def send(self, msg):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(msg.encode(), (self.host, self.port))
+        self._sender.send_queue_append((msg.encode(), (self.host, self.port)))
+    def is_alive(self):
+        assert not self._lock.locked()
+        with self._lock:
+            is_alv = (datetime.now() - self.ping_age < self.ping_delta)
+        return is_alv
 
 class Controller():
-    def __init__(self, cfg):
+    def __init__(self, cfg, sender):
         self.djk_max   = sys.maxsize
         self.topology = cfg.get('num_switches')
         self.map           = {}
         self.routing_table = {}
         for edge in cfg.get('edges'): 
             self.update_map(edge)
+        self._sender    = sender
         self.paths     = {}
         self.lock      = threading.Lock()
         self.registery = dict()
@@ -112,7 +81,6 @@ class Controller():
                             distances[adjacent] = distance
                             paths[adjacent] = paths[current_node] + [adjacent]
                             heapq.heappush(queue, (distance, adjacent))
-            
             # unwrap the info for the table
             row = []
             for k in self.map:
@@ -123,7 +91,6 @@ class Controller():
                     next_hop = dest_id
                 row.append((dest_id, next_hop, distances[k]))
             self.routing_table[start] = row
-
 
     def send_register_response(self, switch_id=None):
         if switch_id == None:
@@ -139,6 +106,7 @@ class Controller():
 
             s.send(json.dumps(msg))
             self.log_register_response_sent(s.id)
+
     def send_routing_table_update(self, switch_id=None):
         if switch_id == None:
             switches = self.registery.values()
@@ -148,6 +116,18 @@ class Controller():
             msg = {'action':'routing_update', 'data':self.routing_table[s.id]}
             s.send(json.dumps(msg))
         self.log_routing_table_update()
+
+    def handle_register_request(self, host, port, switch_id):
+        assert self.lock.locked()
+        self.registery[switch_id] = Switch(switch_id, host, port, self._sender) 
+        self.log_register_request_received(switch_id)
+        if self.is_booted:
+            self.send_register_response(switch_id)
+            self.send_routing_table_update()
+        print(f'registered {switch_id}')
+    
+    def handle_topology_update(self, top_update):
+        print(f'hadling update: {top_update}')
 
     def dump_log(self):
         assert self.lock.locked()
@@ -225,30 +205,31 @@ def handle_event(event, controller:Controller)->None:
     (host, port), data = event
     data = json.loads(data.decode())
     try:
-        if data['action'].lower() == 'register_request':
+        action = data['action'].lower()
+        if action == 'register_request':
             with controller.lock:
-                switch_id = data['data']
-                switch = Switch(switch_id, host, port) 
-                controller.registery[switch_id] = switch
-                controller.log_register_request_received(switch_id)
-            print(f'registered {switch_id}')
+                controller.handle_register_request(host, port, data['data'])
 
         # not locked becasue is_booted is only modified one time within
         # a lock after the bootstrap process is completed
         if controller.is_booted:
-            pass
+            if action == 'topology_update':
+                with controller.lock:
+                    controller.handle_topology_update(data['data'])
+
 
     except Exception as e:
         if controller.lock.locked():
             controller.lock.release()
         print(f'{e}\nERROR READING EVENT: {host}:{port}\n{data}\n')
 
-def loop_handle_events(controller, do_break=lambda: False):
+def loop_handle_events(controller, listener, do_break=lambda: False):
     success = True
     try:
         while not do_break():
-            if len(event_queue) > 0:
-                event  = event_queue_pop()
+            # handle incoming events
+            if listener.event_queue_size() > 0:
+                event  = listener.event_queue_pop()
                 thread = threading.Thread(target=handle_event, args=(event, controller))
                 thread.start()
     except KeyboardInterrupt:
@@ -266,13 +247,18 @@ def main():
     parser.add_argument('config_path', type=str, help='path of the config file')
     args = parser.parse_args()
     
-    # Write your code below or elsewhere in this file
-    cfg = read_config(args.config_path)
-    controller = Controller(cfg)
+    print('\n\nStarting listener'.upper())
+    listener = Listener(args.port)
+    listener.start()
 
-    print('\n\nStarting listner'.upper())
-    listner = Listener(args.port)
-    listner.start()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    print('\n\nStarting sender'.upper())
+    sender = Sender(sock)
+    sender.start()
+
+    cfg = read_config(args.config_path)
+    controller = Controller(cfg, sender)
 
     # bootstraping process
     # waiting for all switches to register
@@ -284,7 +270,7 @@ def main():
             if controller.topology == len(controller.registery.keys()):
                 ret = True
         return ret
-    success = loop_handle_events(controller, is_booted)
+    success = loop_handle_events(controller, listener, is_booted)
     print(f'\n\nBootstrap process completed: success = {success}'.upper())
     print(controller)
 
@@ -301,10 +287,10 @@ def main():
 
         # start the main controller process 
         print('\n\nStarting main controller process'.upper())
-        success = loop_handle_events(controller)
+        success = loop_handle_events(controller, listener)
         print(f'\n\nMain controller process completed: success = {success}'.upper())
 
-    listner.kill()
+    listener.kill()
     print('program complete ')
 
 if __name__ == "__main__":

@@ -15,8 +15,10 @@ def send_udp_packet(hostname, port, iteration):
     except Exception as e:
         print(f"Failed to send UDP packet {iteration} to {hostname}:{port}. Error: {e}")
 
-def start_switch(hostname, port, iteration):
+def start_switch(hostname, port, iteration, fsym=None):
     args = ['switch.py', str(iteration), hostname, str(port)]
+    if fsym:
+        args.append(f'-f {fsym}')
     try:
         subprocess.run(args, check=True)
     except subprocess.CalledProcessError as e:
@@ -37,7 +39,10 @@ def main():
 
     # Send five UDP packets concurrently
     threads = []
-    for i in range(6):
+    thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, 0, 1))
+    threads.append(thread)
+    thread.start()
+    for i in range(1,6):
         thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, i))
         threads.append(thread)
         thread.start()
