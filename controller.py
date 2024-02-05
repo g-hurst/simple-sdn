@@ -8,6 +8,7 @@ import threading
 import json
 import heapq
 from copy import deepcopy
+from itertools import permutations
 
 from com import Listener, Sender, PING_TIME, TIMEOUT
 
@@ -21,7 +22,7 @@ class Switch():
         self._lock   = threading.Lock()
         self._sender = sender
         self.ping_age   = datetime.now()
-        self.ping_delta = timedelta(seconds=PING_TIME)
+        self.ping_delta = timedelta(seconds=TIMEOUT)
     def __str__(self):
         msg = 'Switch:\n  '
         msg += '\n  '.join([f'{k} == {v}' for (k,v) in self.__dict__.items()])
@@ -38,7 +39,7 @@ class Switch():
 
 class Controller():
     def __init__(self, cfg, sender):
-        self.djk_max   = sys.maxsize
+        self.djk_max   = 9999
         self.topology = cfg.get('num_switches')
         self.map           = {}
         self.bootstrapped_map = {}
@@ -66,6 +67,9 @@ class Controller():
         else:                             self.map[edge[1]][edge[0]] = edge[2]
 
     def calc_routing_table_djk(self):
+        print(f'calculating routing table on {self.map}')
+        unseen_combos = set(permutations(self.bootstrapped_map.keys(), 2))
+        self.routing_table = {}
         for start in self.map:
             # do djkstras
             distances = {node: self.djk_max for node in self.map}
@@ -79,7 +83,7 @@ class Controller():
                     visited.add(current_node)
                     for adjacent, weight in self.map[current_node].items():
                         distance = current_distance + weight
-                        if distance < distances[adjacent]:
+                        if distances.get(adjacent) and distance < distances[adjacent]:
                             distances[adjacent] = distance
                             paths[adjacent] = paths[current_node] + [adjacent]
                             heapq.heappush(queue, (distance, adjacent))
@@ -91,8 +95,17 @@ class Controller():
                     next_hop = paths[k][1]
                 else:
                     next_hop = dest_id
+                if (start, dest_id)  in unseen_combos:
+                    unseen_combos.remove((start, dest_id))
                 row.append((dest_id, next_hop, distances[k]))
             self.routing_table[start] = row
+
+        # add infinite states for unreachable destinations
+        for (start, dest) in unseen_combos:
+            if self.routing_table.get(start) == None:
+                continue
+            self.routing_table[start].append((dest, -1, self.djk_max))
+
 
     def send_register_response(self, switch_id=None):
         if switch_id == None:
@@ -119,11 +132,21 @@ class Controller():
             s.send(json.dumps(msg))
         self.log_routing_table_update()
 
+    # handles when switches regiser durring bootstrap process
+    # when bootstrapped, also handles when switch becomes re-alive
     def handle_register_request(self, host, port, switch_id):
         assert self.lock.locked()
         self.registery[switch_id] = Switch(switch_id, host, port, self._sender) 
         self.log_register_request_received(switch_id)
         if self.is_booted:
+            # update the map with the stored data from bootstrapping
+            self.map[switch_id] = self.bootstrapped_map.get(switch_id)
+            for bsm_id in self.bootstrapped_map.keys():
+                if switch_id in self.bootstrapped_map[bsm_id]:
+                    self.map[bsm_id][switch_id] = self.bootstrapped_map[bsm_id][switch_id]
+
+            self.calc_routing_table_djk()
+            self.log_topology_update_switch_alive(switch_id)
             self.send_register_response(switch_id)
             self.send_routing_table_update()
         print(f'registered {switch_id}')
@@ -133,6 +156,9 @@ class Controller():
         do_calc = False
         sw_id = list(top_update.keys())[0]
         if int(sw_id) in self.map:
+            # update switch alive status
+            self.registery[int(sw_id)].ping_age = datetime.now()
+            # check for dead links and recompute if needed
             for link_id in deepcopy(list(self.map[int(sw_id)].keys())):
                 if link_id not in top_update[sw_id]:
                     do_calc = True
@@ -142,6 +168,18 @@ class Controller():
             if do_calc:
                 self.calc_routing_table_djk()
                 self.send_routing_table_update()
+
+    def handle_switch_dead(self, sw_id):
+        assert self.lock.locked()
+        self.registery.pop(sw_id)
+        for k in self.map.keys():
+            if sw_id in  self.map[k].keys():
+                self.map[k].pop(sw_id)
+        self.map.pop(sw_id)
+        print(f'DEAD SWITCH: {sw_id}')
+        self.log_topology_update_switch_dead(sw_id)
+        self.calc_routing_table_djk()
+        self.send_routing_table_update()
                 
     def dump_log(self):
         assert self.lock.locked()
@@ -181,26 +219,18 @@ class Controller():
         self.log.append(str(datetime.time(datetime.now())) + "\n")
         self.log.append(f"Link Dead {switch_id_1},{switch_id_2}\n")
         self.dump_log() 
-
-# "Topology Update: Switch Dead" Format is below:
-#
-#  Timestamp
-#  Switch Dead <Switch ID>
-def topology_update_switch_dead(switch_id):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append(f"Switch Dead {switch_id}\n")
-    write_to_log(log) 
-
-# "Topology Update: Switch Alive" Format is below:
-#
-#  Timestamp
-#  Switch Alive <Switch ID>
-def topology_update_switch_alive(switch_id):
-    log = []
-    log.append(str(datetime.time(datetime.now())) + "\n")
-    log.append(f"Switch Alive {switch_id}\n")
-    write_to_log(log) 
+    #  Timestamp
+    #  Switch Dead <Switch ID>
+    def log_topology_update_switch_dead(self, switch_id):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append(f"Switch Dead {switch_id}\n")
+        self.dump_log() 
+    #  Timestamp
+    #  Switch Alive <Switch ID>
+    def log_topology_update_switch_alive(self, switch_id):
+        self.log.append(str(datetime.time(datetime.now())) + "\n")
+        self.log.append(f"Switch Alive {switch_id}\n")
+        self.dump_log() 
 
 
 def read_config(f_name):
@@ -242,6 +272,12 @@ def loop_handle_events(controller, listener, do_break=lambda: False):
                 event  = listener.event_queue_pop()
                 thread = threading.Thread(target=handle_event, args=(event, controller))
                 thread.start()
+
+            with controller.lock:
+                # handle dead switches
+                for sw_id in deepcopy(list(controller.registery.keys())):
+                    if not controller.registery[sw_id].is_alive():
+                        controller.handle_switch_dead(sw_id)
     except KeyboardInterrupt:
         print('keyboard interrupt in loop_handle_events()')
         success = False

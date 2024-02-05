@@ -39,10 +39,11 @@ def main():
 
     # Send five UDP packets concurrently
     threads = []
-    thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, 0, 1))
+    # thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, 0, 1)) # simulate falure on link 1
+    thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, 0))
     threads.append(thread)
     thread.start()
-    for i in range(1,6):
+    for i in range(1,3):
         thread = threading.Thread(target=test_fn, args=(args.hostname, args.port, i))
         threads.append(thread)
         thread.start()

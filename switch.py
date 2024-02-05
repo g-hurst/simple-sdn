@@ -180,6 +180,12 @@ def loop_handle_events(switch, listener, do_break=lambda: False):
     success = True
     try:
         while not do_break():
+            # handle incoming events
+            if listener.event_queue_size() > 0:
+                event  = listener.event_queue_pop()
+                thread = threading.Thread(target=handle_event, args=(event, switch))
+                thread.start()
+                
             with switch.lock:
                 # send out topology update and pings to switch neighbors 
                 if (datetime.now() - switch.ping_age > switch.ping_delta):
@@ -192,11 +198,8 @@ def loop_handle_events(switch, listener, do_break=lambda: False):
                     if not switch.neighbors[nb_id].is_alive():
                         switch.handle_neighbor_dead(nb_id)
 
-            # handle incoming events
-            if listener.event_queue_size() > 0:
-                event  = listener.event_queue_pop()
-                thread = threading.Thread(target=handle_event, args=(event, switch))
-                thread.start()
+
+
     except KeyboardInterrupt:
         print('keyboard interrupt in loop_handle_events()')
         success = False
