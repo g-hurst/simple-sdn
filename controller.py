@@ -309,7 +309,6 @@ def main():
     # bootstraping process
     # waiting for all switches to register
     # all events that are not register requests durring this time are ignored
-    do_break = False
     def is_booted():
         ret = False
         with controller.lock:
