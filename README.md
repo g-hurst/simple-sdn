@@ -58,8 +58,10 @@ All messages are sent in JSON string format, and in the format:
 ```
 ```
 {'action':'routing_update', 
- 'data':{
-
-  }
+ 'data':[
+  (<Desitination_ID>, <Next_Routint_Hop_ID>, <Distance>),
+  ... ,
+  (<Desitination_ID>, <Next_Routint_Hop_ID>, <Distance>),
+ ]
 }
 ```
