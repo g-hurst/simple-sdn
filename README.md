@@ -1,7 +1,7 @@
 # simple-sdn
 
 ## Overview
-This project is for Purdue ECE 50863 building a simple software definded network.
+This project is for Purdue ECE 50863 in order to explore concepts while building a simple software definded network. The instrucitons for the project can be found in [in the directions folder](https://github.com/g-hurst/simple-sdn/tree/master/directions).
 
 ## Usage
 **Controller:**
