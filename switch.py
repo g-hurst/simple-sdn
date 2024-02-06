@@ -53,6 +53,7 @@ class Switch():
         self.ping_delta = timedelta(seconds=PING_TIME)
         self.neighbors = dict()
         self.routing_table = []
+        self.is_registered = False
 
     def register(self):
         msg = {'action':'register_request', 'data':self.id}
@@ -63,6 +64,9 @@ class Switch():
 
     def handle_register_response(self, table):
         assert self.lock.locked()
+        if self.is_registered == False:
+            self.is_registered = True
+            self.ping_age = datetime.now()
         for row in table:
             assert len(row) == 3
             self.neighbors[row[0]] = Neighbor(*row)
@@ -81,6 +85,7 @@ class Switch():
                 with self.neighbors[nb_id].lock:
                     self.neighbors[nb_id].ping_age = datetime.now()
             else:
+                print(f'ALIVE: {self.id}->{nb_id}')
                 self.neighbors[nb_id] = Neighbor(nb_id, host, port)
                 self.log_neighbor_alive(nb_id)
 
@@ -104,7 +109,6 @@ class Switch():
               }
         self.sender.send_queue_append(
             (json.dumps(msg).encode(), (self.host, self.port)), 
-            front=True
         )
 
     def dump_log(self):
@@ -186,17 +190,19 @@ def loop_handle_events(switch, listener, do_break=lambda: False):
                 thread = threading.Thread(target=handle_event, args=(event, switch))
                 thread.start()
                 
+            
             with switch.lock:
-                # send out topology update and pings to switch neighbors 
-                if (datetime.now() - switch.ping_age > switch.ping_delta):
-                    switch.do_alive_ping()
-                    switch.do_topology_update()
-                    switch.ping_age = datetime.now()
+                if switch.is_registered:
+                    # send out topology update and pings to switch neighbors 
+                    if (datetime.now() - switch.ping_age > switch.ping_delta):
+                        switch.do_alive_ping()
+                        switch.do_topology_update()
+                        switch.ping_age = datetime.now()
 
-                # handle dead neighbors
-                for nb_id in copy.deepcopy(list(switch.neighbors.keys())):
-                    if not switch.neighbors[nb_id].is_alive():
-                        switch.handle_neighbor_dead(nb_id)
+                    # handle dead neighbors
+                    for nb_id in copy.deepcopy(list(switch.neighbors.keys())):
+                        if not switch.neighbors[nb_id].is_alive():
+                            switch.handle_neighbor_dead(nb_id)
 
 
 

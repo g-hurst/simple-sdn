@@ -147,7 +147,7 @@ class Controller():
 
             self.calc_routing_table_djk()
             self.log_topology_update_switch_alive(switch_id)
-            self.send_register_response(switch_id)
+            self.send_register_response()
             self.send_routing_table_update()
         print(f'registered {switch_id}')
     
@@ -274,10 +274,11 @@ def loop_handle_events(controller, listener, do_break=lambda: False):
                 thread.start()
 
             with controller.lock:
-                # handle dead switches
-                for sw_id in deepcopy(list(controller.registery.keys())):
-                    if not controller.registery[sw_id].is_alive():
-                        controller.handle_switch_dead(sw_id)
+                if controller.is_booted:
+                    # handle dead switches
+                    for sw_id in deepcopy(list(controller.registery.keys())):
+                        if not controller.registery[sw_id].is_alive():
+                            controller.handle_switch_dead(sw_id)
     except KeyboardInterrupt:
         print('keyboard interrupt in loop_handle_events()')
         success = False
@@ -318,6 +319,8 @@ def main():
         return ret
     success = loop_handle_events(controller, listener, is_booted)
     controller.bootstrapped_map = deepcopy(controller.map)
+    for sw_id in deepcopy(list(controller.registery.keys())):
+        controller.registery[sw_id].ping_age = datetime.now()
     print(f'\n\nBootstrap process completed: success = {success}'.upper())
     print(controller)
 
