@@ -44,7 +44,7 @@ All messages are sent in JSON string format, and in the format:
 {'action':'', 'data':''}
 ```
 
-# Messages Handled By Switch
+### Messages Handled By Switch
 
 ```
 {'action':'register_response',
