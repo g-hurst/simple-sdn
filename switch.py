@@ -204,8 +204,6 @@ def loop_handle_events(switch, listener, do_break=lambda: False):
                         if not switch.neighbors[nb_id].is_alive():
                             switch.handle_neighbor_dead(nb_id)
 
-
-
     except KeyboardInterrupt:
         print('keyboard interrupt in loop_handle_events()')
         success = False
