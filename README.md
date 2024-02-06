@@ -44,7 +44,7 @@ All messages are sent in JSON string format, and in the format:
 {'action':'', 'data':''}
 ```
 
-### Messages Handled By Controller\
+### Messages Handled By Controller
 
 **register_request:** Message from Switch-to-Controller in order to allow 
 switches to join the network in the bootstrapping process. Also allows for
