@@ -4,6 +4,17 @@ import socket
 PING_TIME = 2               # every PING_TIME seconds, a broadcast alive ping to all neighbors
 TIMEOUT = 3 * PING_TIME     # neighbors flagged as DEAD if have not recieved an alive ping by timeout
 
+"""
+The Listener class provides functionality for setting up a UDP listener on a specified port. 
+It inherits from threading.Thread to allow concurrent execution. It listens for incoming UDP 
+packets and adds them to an event queue for processing. The class includes methods to control 
+its execution and manage the event queue.
+Usage:
+- Initialize with a port number or socket object.
+- Call the run() method to start listening for incoming packets.
+- Use the event_queue_pop() method to retrieve events from the event queue.
+- Use the kill() method to stop the listener thread.
+"""
 class Listener(threading.Thread):
     def __init__(self, port=None, socket=None):
         super().__init__()
@@ -47,6 +58,16 @@ class Listener(threading.Thread):
             sz = len(self._event_queue)
         return sz
 
+"""
+The Sender class provides functionality for sending UDP packets. It inherits from threading.Thread 
+to allow concurrent execution. It sends packets from a send queue and includes methods to manage 
+the send queue and control its execution.
+Usage:
+- Initialize with a socket object.
+- Call the run() method to start sending packets.
+- Use the send_queue_append() method to add packets to the send queue.
+- Use the kill() method to stop the sender thread.
+"""
 class Sender(threading.Thread):
     def __init__(self, socket):
         super().__init__()

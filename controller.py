@@ -39,7 +39,7 @@ class Switch():
 
 class Controller():
     def __init__(self, cfg, sender):
-        self.djk_max   = 9999
+        self._djk_max   = 9999
         self.topology = cfg.get('num_switches')
         self.map           = {}
         self.bootstrapped_map = {}
@@ -72,7 +72,7 @@ class Controller():
         self.routing_table = {}
         for start in self.map:
             # do djkstras
-            distances = {node: self.djk_max for node in self.map}
+            distances = {node: self._djk_max for node in self.map}
             distances[start] = 0
             paths = {node: [start,] for node in self.map}
             visited = set()
@@ -104,8 +104,7 @@ class Controller():
         for (start, dest) in unseen_combos:
             if self.routing_table.get(start) == None:
                 continue
-            self.routing_table[start].append((dest, -1, self.djk_max))
-
+            self.routing_table[start].append((dest, -1, self._djk_max))
 
     def send_register_response(self, switch_id=None):
         if switch_id == None:
@@ -232,7 +231,8 @@ class Controller():
         self.log.append(f"Switch Alive {switch_id}\n")
         self.dump_log() 
 
-
+# collects information from the configuration file
+# and returns it in dictionary format
 def read_config(f_name):
     lines = [line.strip() for line in open(f_name, 'r')]
     cfg = {
@@ -256,7 +256,6 @@ def handle_event(event, controller:Controller)->None:
             if action == 'topology_update':
                 with controller.lock:
                     controller.handle_topology_update(data['data'])
-
 
     except Exception as e:
         if controller.lock.locked():

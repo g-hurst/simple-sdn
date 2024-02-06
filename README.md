@@ -38,3 +38,28 @@ options:
 
 
 ## Message Structure
+
+All messages are sent in JSON string format, and in the format: 
+```
+{'action':'', 'data':''}
+```
+
+# Messages Handled By Switch
+
+```
+{'action':'register_response',
+ 'data': {'id':<Switch_ID>, 
+          'table':[(<Neighbor_ID>, <Neighbor_Host>,<Neighbor_Port>),
+                    ... ,
+                    (<Neighbor_ID>, <Neighbor_Host>,<Neighbor_Port>)
+           ]
+  }
+}
+```
+```
+{'action':'routing_update', 
+ 'data':{
+
+  }
+}
+```
