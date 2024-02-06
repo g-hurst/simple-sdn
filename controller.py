@@ -67,7 +67,6 @@ class Controller():
         else:                             self.map[edge[1]][edge[0]] = edge[2]
 
     def calc_routing_table_djk(self):
-        print(f'calculating routing table on {self.map}')
         unseen_combos = set(permutations(self.bootstrapped_map.keys(), 2))
         self.routing_table = {}
         for start in self.map:
